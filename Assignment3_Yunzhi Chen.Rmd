@@ -1,0 +1,100 @@
+---
+title: "Assignment3"
+author: "Yunzhi Chen 32051018"
+date: "`r Sys.Date()`"
+output: 
+  bookdown::html_document2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  error = FALSE,
+  fig.align = "center"
+)
+```
+
+```{r libraries, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(fpp3)
+```
+
+
+```{r data}
+# Use your student ID as the seed
+set.seed(32051018)
+myseries <- global_economy %>%
+  filter(Country == sample(Country, 1))
+```
+
+# Using a test set of 5 years, fit an ETS model chosen automatically, and three benchmark methods to the training data. Which gives the best forecasts on the test set, based on RMSE?
+
+```{r}
+# split into train and test data
+myseries_train <- myseries %>%
+  filter(Year <= 2012) #max year is 2017
+myseries_train %>%
+  autoplot(log(Population))
+
+# models
+fc <- myseries_train %>%
+  model(
+    ETS = ETS(log(Population)),
+    Mean = MEAN(log(Population)),
+    `Naïve` = NAIVE(log(Population)),
+    Drift = RW(log(Population) ~ drift())
+  ) %>% 
+  forecast(h = 5) 
+
+fc %>% autoplot(myseries, level = NULL)
+
+# check RMSE
+accuracy(fc, myseries) 
+```
+
+Based on RMSE, we can see the lowest value is from the ETS model, which indicates the best forecast on the test set is the ETS model chosen automatically.
+
+# Check the residuals from the best model using an ACF plot and a Ljung-Box test. Do the residuals appear to be white noise?
+```{r}
+# ACF plot
+bestfit <- myseries %>% 
+  model(ETS = ETS(log(Population))) 
+gg_tsresiduals(bestfit)
+
+# Ljung-Box test
+augment(bestfit) %>% 
+  features(.innov, features = ljung_box, lag = 20) #In Ljung-Box test use lag = 10 for non-seasonal data
+```
+
+According to the ACF plot and the output of the Ljung-Box test, we can see the results are significant (i.e. the p-value is less than 0.05). Thus, we can conclude that the residuals are distinguishable from a white noise series, which means the residuals appear not to be white noise.
+
+# Now use time-series cross-validation with a minimum sample size of 15 years, a step size of 1 year, and a forecast horizon of 5 years. Calculate the RMSE of the results. Does it change the conclusion you reach based on the test set?
+```{r}
+#cross-validation
+myseries_train_cv <- myseries %>%
+  stretch_tsibble(.init = 15, .step = 1) %>%
+  relocate(Year, Population, .id)
+
+# check the model accuracy
+fc_cv <- myseries_train_cv %>%
+  model( 
+    ETS = ETS(log(Population)),
+    Mean = MEAN(log(Population)),
+    `Naïve` = NAIVE(log(Population)),
+    Drift = RW(log(Population) ~ drift())) %>% 
+  forecast(h = 5)
+
+accuracy(fc_cv, myseries)
+```
+
+By using time-series cross-validation, I modeled the same four and calculated their accuracy of them. To sum up, the best model is still the ETS model which does not change the conclusion based on the test set.
+
+
+# Which of these two methods of computing accuracy is more reliable? Why?
+
+I think the results of time series cross-validation of computing accuracy are more convincing. Because first, it is hard to obtain a reliable forecast based on a small training/testing set while the cross-validation method contains a series of test sets. Besides, the time series cross-validation is done based on the entire data set, which takes into account the fitness of each iteration. However, the prediction using test data only calculates the error term based on the test set.
